@@ -552,6 +552,109 @@ body {
   max-width: 90vw; text-align: center;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── ADDRESSES MODAL ── */
+#addrModal {
+  display: none;
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(0,0,0,0.85);
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  backdrop-filter: blur(4px);
+}
+#addrModal.open { display: flex; }
+#addrPanel {
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  border-top: 1px solid var(--border);
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 20px;
+}
+#addrPanelHeader {
+  display: flex;
+  align-items: center;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+#addrPanelHeader h3 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  flex: 1;
+}
+#addrPanelClose {
+  background: var(--card);
+  border: none;
+  color: var(--muted);
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+#addrPanelList {
+  overflow-y: auto;
+  flex: 1;
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.addr-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.addr-num {
+  min-width: 26px; height: 26px;
+  background: var(--muted);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+.addr-text {
+  flex: 1;
+  font-size: 14px;
+  font-family: var(--font-display);
+  line-height: 1.3;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  width: 100%;
+  padding: 0;
+  outline: none;
+}
+.addr-text:focus {
+  color: var(--yellow);
+}
+.addr-del {
+  background: rgba(255,51,85,0.15);
+  border: 1px solid rgba(255,51,85,0.3);
+  color: var(--red);
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+#addrEmpty {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 30px;
+}
 </style>
 </head>
 <body>
@@ -567,7 +670,7 @@ body {
   <div id="scanOverlay">
     <div id="topBar">
       <div id="appTitle">BIMBA 🚚</div>
-      <div id="counter">📦 <span id="countNum">0</span> guardados</div>
+      <div id="counter" onclick="showAddrModal()" style="cursor:pointer">📦 <span id="countNum">0</span> guardados ›</div>
     </div>
     <div></div>
     <div id="bottomControls">
@@ -669,6 +772,20 @@ body {
   </div>
   <div id="tabList">
     <div id="routeListWrap"></div>
+  </div>
+</div>
+
+
+<!-- ── ADDRESSES MODAL ── -->
+<div id="addrModal">
+  <div id="addrPanel">
+    <div id="addrPanelHeader">
+      <h3>📦 Direcciones guardadas</h3>
+      <button id="addrPanelClose" onclick="closeAddrModal()">✕</button>
+    </div>
+    <div id="addrPanelList">
+      <div id="addrEmpty">Todavía no guardaste ninguna dirección</div>
+    </div>
   </div>
 </div>
 
@@ -851,41 +968,114 @@ function captureFrame() {
   return canvas.toDataURL('image/png');
 }
 
-// Extrae dirección argentina del texto OCR
+// Extrae dirección argentina del texto OCR — soporta etiquetas de 2 líneas
 function extractAddress(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 4);
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2);
 
-  // 1. Busca línea que sigue a "Dirección" o "Direccion"
+  // 1. Busca "Dirección" y une las siguientes líneas (caso: calle en línea, número en siguiente)
   for (let i = 0; i < lines.length; i++) {
     if (/direcci[oó]n/i.test(lines[i])) {
-      // La dirección puede estar en la misma línea o la siguiente
       const same = lines[i].replace(/direcci[oó]n(\s+y\s+c[oó]digo\s+postal)?[:\s]*/i, '').trim();
-      if (same.length > 6 && /\d/.test(same)) return same;
-      if (lines[i+1] && lines[i+1].length > 6 && /\d/.test(lines[i+1])) return lines[i+1];
+      if (same.length > 4) {
+        if (/\d{2,5}/.test(same)) return same;
+        // Número en línea siguiente (INTENDENTE ERNESTO GRANT / 388 1°B)
+        if (lines[i+1] && /\d{2,5}/.test(lines[i+1])) {
+          return (same + ' ' + lines[i+1]).replace(/\s+/g, ' ');
+        }
+      }
+      // Dirección completa en siguiente línea
+      if (lines[i+1]) {
+        if (/\d{2,5}/.test(lines[i+1]) && /[a-z]/i.test(lines[i+1])) return lines[i+1];
+        // Calle en i+1, número en i+2
+        if (lines[i+2] && /\d{2,5}/.test(lines[i+2])) {
+          return (lines[i+1] + ' ' + lines[i+2]).replace(/\s+/g, ' ');
+        }
+      }
     }
   }
 
-  // 2. Patrón: calle + número
+  // 2. Líneas consecutivas: solo texto (calle) + solo número (altura)
+  for (let i = 0; i < lines.length - 1; i++) {
+    const curr = lines[i], next = lines[i+1];
+    const esCalle = /^[A-ZÁÉÍÓÚÑ][a-záéíóúñA-Z\s\.]{4,}$/.test(curr);
+    const esAltura = /^\d{2,5}\b/.test(next) && !/\d{7,}/.test(next);
+    if (esCalle && esAltura) return (curr + ' ' + next).replace(/\s+/g, ' ');
+  }
+
+  // 3. Patrón clásico en una sola línea
   const patterns = [
-    /([A-ZÁÉÍÓÚÑ][a-záéíóúñA-Z\s\.]+\s+\d{2,5}(?:\s*(?:piso|p\.?|pb|dto?\.?|dep\.?|\d°?\s*[A-Z]?))?)/g,
-    /(\d{3,5}\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ\s]+)/g,
+    /([A-ZÁÉÍÓÚÑ][a-záéíóúñA-Z\s\.]{3,}\s+\d{2,5}(?:\s*(?:piso|p\.?|pb|dto?\.?|dep\.?|\d°?\s*[A-Z]?))?)/g,
+    /(\d{3,5}\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ\s]{4,})/g,
   ];
   for (const p of patterns) {
     const m = text.match(p);
     if (m) {
-      const candidate = m[0].trim().replace(/\s+/g, ' ');
-      if (candidate.length > 8) return candidate;
+      const c = m[0].trim().replace(/\s+/g, ' ');
+      if (c.length > 8 && !/\d{7,}/.test(c)) return c;
     }
   }
 
-  // 3. Línea con número de 3+ dígitos y letras
+  // 4. Fallback: línea con número y letras, sin teléfono
   for (const line of lines) {
     if (/\d{3,5}/.test(line) && /[a-záéíóúñ]{3,}/i.test(line) && line.length > 8) {
-      // Excluye teléfonos (muchos dígitos seguidos)
-      if (!/\d{8,}/.test(line)) return line.replace(/\s+/g, ' ');
+      if (!/\d{7,}/.test(line)) return line.replace(/\s+/g, ' ');
     }
   }
   return null;
+}
+
+
+
+// ── ADDRESSES MODAL ──────────────────────────────────────────
+function showAddrModal() {
+  renderAddrList();
+  document.getElementById('addrModal').classList.add('open');
+}
+
+function closeAddrModal() {
+  document.getElementById('addrModal').classList.remove('open');
+}
+
+function renderAddrList() {
+  const list = document.getElementById('addrPanelList');
+  const empty = document.getElementById('addrEmpty');
+  if (addresses.length === 0) {
+    list.innerHTML = '<div id="addrEmpty">Todavía no guardaste ninguna dirección</div>';
+    return;
+  }
+  list.innerHTML = '';
+  addresses.forEach((addr, i) => {
+    const div = document.createElement('div');
+    div.className = 'addr-item';
+    div.innerHTML = \`
+      <div class="addr-num">\${i+1}</div>
+      <input class="addr-text" value="\${addr.replace(/"/g, '&quot;')}" 
+             onchange="editAddress(\${i}, this.value)"
+             onblur="editAddress(\${i}, this.value)" />
+      <button class="addr-del" onclick="deleteAddress(\${i})">✕</button>
+    \`;
+    list.appendChild(div);
+  });
+}
+
+function editAddress(index, newVal) {
+  const val = newVal.trim();
+  if (!val) return;
+  addresses[index] = val;
+  persistState();
+  // Re-render badge numbers
+  renderAddrList();
+}
+
+function deleteAddress(index) {
+  addresses.splice(index, 1);
+  const n = addresses.length;
+  document.getElementById('countNum').textContent = n;
+  document.getElementById('routeCount').textContent = n;
+  document.getElementById('routeBtn').disabled = n < 2;
+  persistState();
+  renderAddrList();
+  toast(\`🗑️ Dirección eliminada · \${n} restantes\`);
 }
 
 // ── OCR ADAPTIVE THROTTLE ─────────────────────────────────────
