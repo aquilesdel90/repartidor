@@ -7,6 +7,12 @@ import math
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
+@app.after_request
+def add_security_headers(response):
+    response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
+    response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+    return response
+
 MAPBOX_TOKEN = os.environ.get('MAPBOX_TOKEN', '')
 
 # ── GEOCODING ──────────────────────────────────────────────────
