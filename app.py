@@ -17,27 +17,45 @@ MAPBOX_TOKEN = os.environ.get('MAPBOX_TOKEN', '')
 
 # ── GEOCODING ──────────────────────────────────────────────────
 def geocode(address, user_lat=None, user_lon=None):
-    """Convierte dirección a lat/lon usando Mapbox"""
-    query = f"{address}, Argentina"
-    url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{requests.utils.quote(query)}.json"
+    """Convierte dirección a lat/lon usando Mapbox con filtros estrictos para Argentina"""
+    # NO agregamos ", Argentina" al string, dejamos que la API lo maneje con el parámetro 'country'
+    url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{requests.utils.quote(address)}.json"
+    
     params = {
         'access_token': MAPBOX_TOKEN,
-        'country': 'AR',
+        'country': 'ar',         # OBLIGATORIO: Solo busca en Argentina
+        'types': 'address',      # OBLIGATORIO: Solo busca calles numeradas (ignora ciudades sueltas o plazas)
         'language': 'es',
         'limit': 1,
     }
-    # Proximidad dinámica: si tenemos GPS del usuario, Mapbox prioriza resultados cercanos
+    
+    # Proximidad dinámica: si tenemos GPS del usuario, Mapbox prioriza resultados cercanos a él
     if user_lat is not None and user_lon is not None:
-        params['proximity'] = f'{user_lon},{user_lat}'
+        params['proximity'] = f'{user_lon},{user_lat}' # Mapbox exige LONGITUD primero
+        
     try:
         r = requests.get(url, params=params, timeout=5)
         data = r.json()
+        
         if data.get('features'):
             lon, lat = data['features'][0]['center']
             place_name = data['features'][0].get('place_name', address)
             return {'lat': lat, 'lon': lon, 'place_name': place_name, 'ok': True}
+            
+        # Fallback: Si no encontró nada como 'address', intentamos una segunda búsqueda más permisiva
+        # Esto sirve por si el repartidor puso un barrio privado que Mapbox no clasifica como 'address'
+        params.pop('types', None) 
+        r_fallback = requests.get(url, params=params, timeout=5)
+        data_fallback = r_fallback.json()
+        
+        if data_fallback.get('features'):
+             lon, lat = data_fallback['features'][0]['center']
+             place_name = data_fallback['features'][0].get('place_name', address)
+             return {'lat': lat, 'lon': lon, 'place_name': place_name, 'ok': True}
+
     except Exception as e:
         print(f"Geocoding error: {e}")
+        
     return {'ok': False, 'address': address}
 
 # ── DISTANCE ───────────────────────────────────────────────────

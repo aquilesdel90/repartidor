@@ -1173,7 +1173,7 @@ function deleteAddress(index) {
 let ocrMs = 2800; // empieza en 2.8s, se ajusta según performance del celu
 
 function startOcrLoop() {
-  if (ocrInterval) clearInterval(ocrInterval);
+  if (ocrInterval) clearTimeout(ocrInterval);
   const tick = async () => {
     if (!scanning || cooldown || !ocrWorker) return;
     const frame = captureFrame();
