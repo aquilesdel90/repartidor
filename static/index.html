@@ -1401,11 +1401,13 @@ async function startProcessing() {
 // ── MAP (LEAFLET) ─────────────────────────────────────────────
 function buildMap() {
   const container = document.getElementById('leafletMap');
-  container.style.height = (window.innerHeight - 200) + 'px';
+  const mapScreen = document.getElementById('mapScreen');
+  container.style.height = (mapScreen.clientHeight - 200) + 'px';
 
   if (leafletMap) { leafletMap.remove(); leafletMap = null; }
 
   leafletMap = L.map('leafletMap', { zoomControl: true, attributionControl: false });
+  setTimeout(() => leafletMap.invalidateSize(), 300);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 19
   }).addTo(leafletMap);
