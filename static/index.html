@@ -944,7 +944,12 @@ async function initOCR() {
       setStatus('OCR no disponible · usá voz o manual', '');
       return;
     }
-    ocrWorker = await Tesseract.createWorker('spa', 1, { logger: () => {} });
+    ocrWorker = await Tesseract.createWorker('spa', 1, {
+  logger: () => {},
+    workerPath: 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/worker.min.js',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    corePath: 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js-core/4.0.4/tesseract-core.wasm.js',
+});
     await ocrWorker.setParameters({
       tessedit_pageseg_mode: '6',
       preserve_interword_spaces: '1'
