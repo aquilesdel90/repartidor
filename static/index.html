@@ -937,7 +937,13 @@ function setStatus(text, cls) {
 
 async function initOCR() {
   setStatus('cargando OCR...', 'active');
+  // Pequeño delay para asegurar que el DOM y la cámara estén listos
+  await new Promise(r => setTimeout(r, 800));
   try {
+    if (typeof Tesseract === 'undefined') {
+      setStatus('OCR no disponible · usá voz o manual', '');
+      return;
+    }
     ocrWorker = await Tesseract.createWorker('spa', 1, { logger: () => {} });
     await ocrWorker.setParameters({
       tessedit_pageseg_mode: '6',
@@ -946,6 +952,7 @@ async function initOCR() {
     setStatus('listo · apuntá la etiqueta al marco', '');
     startOcrLoop();
   } catch(e) {
+    console.error('OCR error:', e);
     setStatus('OCR no disponible · usá voz o manual', '');
   }
 }
