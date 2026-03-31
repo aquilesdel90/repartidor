@@ -120,10 +120,6 @@ def nearest_neighbor(points):
 def index():
     return send_from_directory('static', 'index.html')
 
-@app.route('/manifest.json')
-def manifest():
-    return send_from_directory('static', 'manifest.json')
-
 @app.route('/api/geocode-batch', methods=['POST'])
 def geocode_batch():
     """Geocodifica todas las direcciones de una vez"""
