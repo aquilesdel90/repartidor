@@ -1054,13 +1054,13 @@ function renderAddrList() {
   addresses.forEach((addr, i) => {
     const div = document.createElement('div');
     div.className = 'addr-item';
-    div.innerHTML = \`
-      <div class="addr-num">\${i+1}</div>
-      <input class="addr-text" value="\${addr.replace(/"/g, '&quot;')}" 
-             onchange="editAddress(\${i}, this.value)"
-             onblur="editAddress(\${i}, this.value)" />
-      <button class="addr-del" onclick="deleteAddress(\${i})">✕</button>
-    \`;
+    div.innerHTML = `
+      <div class="addr-num">${i+1}</div>
+      <input class="addr-text" value="${addr.replace(/"/g, '&quot;')}" 
+             onchange="editAddress(${i}, this.value)"
+             onblur="editAddress(${i}, this.value)" />
+      <button class="addr-del" onclick="deleteAddress(${i})">✕</button>
+    `;
     list.appendChild(div);
   });
 }
@@ -1082,7 +1082,7 @@ function deleteAddress(index) {
   document.getElementById('routeBtn').disabled = n < 2;
   persistState();
   renderAddrList();
-  toast(\`🗑️ Dirección eliminada · \${n} restantes\`);
+    toast(`🗑️ Dirección eliminada · ${n} restantes`);
 }
 
 // ── OCR ADAPTIVE THROTTLE ─────────────────────────────────────
