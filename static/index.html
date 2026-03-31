@@ -88,9 +88,9 @@ body {
 #scanFrame {
   position: absolute;
   top: 50%; left: 50%;
-  transform: translate(-50%, -58%);
-  width: 82vw;
-  height: 130px;
+  transform: translate(-50%, -55%);
+  width: 88vw;
+  height: 200px;
 }
 
 .corner {
@@ -952,14 +952,14 @@ async function initOCR() {
       tessedit_pageseg_mode: '6',
       preserve_interword_spaces: '1'
     });
-    setStatus('listo · apuntá la etiqueta al marco', '');
+    setStatus('listo · centrá la etiqueta completa en el marco', '');
     startOcrLoop();
   } catch(e) {
     console.error('OCR error:', e);
     // Fallback: intentar sin parámetros extra
     try {
       ocrWorker = await Tesseract.createWorker('spa');
-      setStatus('listo (modo básico) · apuntá la etiqueta', '');
+      setStatus('listo (modo básico) · centrá la etiqueta completa', '');
       startOcrLoop();
     } catch(e2) {
       console.error('OCR fallback error:', e2);
@@ -972,73 +972,145 @@ function captureFrame() {
   const video = document.getElementById('video');
   if (!video.videoWidth) return null;
   const vw = video.videoWidth, vh = video.videoHeight;
-  const cropW = vw * 0.82;
-  const cropH = Math.min(180, vh * 0.25);
+  // Capturar zona más amplia para etiquetas con campos en múltiples líneas
+  const cropW = vw * 0.92;
+  const cropH = Math.min(vh * 0.55, 500); // más alto para abarcar todo el formulario
   const cropX = (vw - cropW) / 2;
-  const cropY = vh * 0.28;
+  const cropY = vh * 0.18; // más arriba para no cortar la parte superior
   const canvas = document.createElement('canvas');
   canvas.width = cropW * 1.5; canvas.height = cropH * 1.5;
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.filter = 'contrast(1.8) brightness(1.15) grayscale(1) sharpen(1)';
+  ctx.filter = 'contrast(1.9) brightness(1.1) grayscale(1)';
   ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/png');
 }
 
-// Extrae dirección argentina del texto OCR — soporta etiquetas de 2 líneas
+// Extrae dirección argentina del texto OCR
+// Soporta: etiquetas tipo formulario (campos separados), Mercado Flex, línea única
 function extractAddress(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+  const fullText = lines.join(' ');
 
-  // 1. Busca "Dirección" y une las siguientes líneas (caso: calle en línea, número en siguiente)
+  // ── ESTRATEGIA 1: Etiquetas tipo formulario (Estilo Enza, remitos, etc.) ──
+  // Busca el campo "Dirección" y recolecta las líneas siguientes hasta Ciudad/Tel/Obs
+  const stopWords = /^(tel[eé]fono|ciudad|provincia|observa|nombre|destinatario|remitente|c[oó]digo|desde|hasta|fecha|precio|total|seña|pedido|detalle|unid|dni|cliente)/i;
+  
   for (let i = 0; i < lines.length; i++) {
     if (/direcci[oó]n/i.test(lines[i])) {
-      const same = lines[i].replace(/direcci[oó]n(\s+y\s+c[oó]digo\s+postal)?[:\s]*/i, '').trim();
-      if (same.length > 4) {
-        if (/\d{2,5}/.test(same)) return same;
-        // Número en línea siguiente (INTENDENTE ERNESTO GRANT / 388 1°B)
-        if (lines[i+1] && /\d{2,5}/.test(lines[i+1])) {
-          return (same + ' ' + lines[i+1]).replace(/\s+/g, ' ');
+      // Texto en la misma línea después del label
+      const sameLine = lines[i].replace(/.*direcci[oó]n(\s+y\s+c[oó]digo\s*postal)?[:\s]*/i, '').trim();
+      
+      let streetPart = '';
+      let numberPart = '';
+      let cityPart = '';
+      
+      // Recolectar líneas siguientes hasta la próxima sección
+      const candidates = [];
+      if (sameLine.length > 3) candidates.push(sameLine);
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        if (stopWords.test(lines[j])) break;
+        candidates.push(lines[j]);
+      }
+      
+      // Buscar ciudad en líneas cercanas
+      for (let j = i; j < Math.min(i + 7, lines.length); j++) {
+        const cityMatch = lines[j].match(/ciudad[:\s]+([A-ZÁÉÍÓÚÑ][a-záéíóúñA-Z\s]{2,20})/i);
+        if (cityMatch) { cityPart = cityMatch[1].trim(); break; }
+      }
+      
+      // Clasificar candidates: calle vs número/piso
+      for (const c of candidates) {
+        if (/^\d{2,5}\b/.test(c) && !streetPart.match(/\d{2,5}/)) {
+          // Es el número de altura (ej: "388 1°B")
+          numberPart = c;
+        } else if (/[a-záéíóúñ]{3,}/i.test(c) && !streetPart) {
+          streetPart = c;
+        } else if (streetPart && /\d{2,5}/.test(c) && !numberPart) {
+          numberPart = c;
         }
       }
-      // Dirección completa en siguiente línea
-      if (lines[i+1]) {
-        if (/\d{2,5}/.test(lines[i+1]) && /[a-z]/i.test(lines[i+1])) return lines[i+1];
-        // Calle en i+1, número en i+2
-        if (lines[i+2] && /\d{2,5}/.test(lines[i+2])) {
-          return (lines[i+1] + ' ' + lines[i+2]).replace(/\s+/g, ' ');
+      
+      // Armar dirección completa
+      if (streetPart) {
+        let addr = streetPart;
+        if (numberPart) addr += ' ' + numberPart;
+        if (cityPart) addr += ', ' + cityPart;
+        addr = addr.replace(/\s+/g, ' ').trim();
+        if (addr.length > 8 && !/\d{7,}/.test(addr)) return addr;
+      }
+    }
+  }
+
+  // ── ESTRATEGIA 2: Mercado Flex / ML ──
+  // Busca "Domicilio" o "Dirección de entrega"
+  for (let i = 0; i < lines.length; i++) {
+    if (/domicilio|direcci[oó]n de entrega|entrega en/i.test(lines[i])) {
+      const sameLine = lines[i].replace(/.*(?:domicilio|direcci[oó]n de entrega|entrega en)[:\s]*/i, '').trim();
+      if (sameLine.length > 8 && /\d/.test(sameLine)) return sameLine;
+      // Siguiente línea
+      if (lines[i+1] && !stopWords.test(lines[i+1])) {
+        let addr = lines[i+1];
+        // Agregar línea de ciudad/barrio si existe
+        if (lines[i+2] && /[A-ZÁÉÍÓÚÑ]/.test(lines[i+2]) && !stopWords.test(lines[i+2]) && lines[i+2].length < 40) {
+          addr += ', ' + lines[i+2];
+        }
+        if (/\d/.test(addr) && addr.length > 8) return addr.replace(/\s+/g, ' ');
+      }
+    }
+  }
+
+  // ── ESTRATEGIA 3: Destinatario + buscar dirección debajo ──
+  for (let i = 0; i < lines.length; i++) {
+    if (/destinatario/i.test(lines[i])) {
+      // La dirección suele estar 2-3 líneas abajo del destinatario
+      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+        if (/direcci[oó]n/i.test(lines[j])) break; // ya lo maneja estrategia 1
+        // Línea con calle y número
+        if (/[a-záéíóúñ]{3,}/i.test(lines[j]) && /\d{2,5}/.test(lines[j]) && !/\d{7,}/.test(lines[j])) {
+          return lines[j].replace(/\s+/g, ' ');
         }
       }
     }
   }
 
-  // 2. Líneas consecutivas: solo texto (calle) + solo número (altura)
+  // ── ESTRATEGIA 4: Dos líneas consecutivas = nombre_calle + altura ──
   for (let i = 0; i < lines.length - 1; i++) {
+    if (stopWords.test(lines[i])) continue;
     const curr = lines[i], next = lines[i+1];
-    const esCalle = /^[A-ZÁÉÍÓÚÑ][a-záéíóúñA-Z\s\.]{4,}$/.test(curr);
-    const esAltura = /^\d{2,5}\b/.test(next) && !/\d{7,}/.test(next);
-    if (esCalle && esAltura) return (curr + ' ' + next).replace(/\s+/g, ' ');
+    // Calle: solo letras y espacios, sin números, longitud razonable
+    const esCalle = /^[A-ZÁÉÍÓÚÑ][a-záéíóúñA-Z\s\.]{4,35}$/.test(curr) && !/\d/.test(curr);
+    // Altura: empieza con número de 2-5 dígitos, puede tener piso/depto
+    const esAltura = /^\d{2,5}\b/.test(next) && !/\d{7,}/.test(next) && next.length < 20;
+    if (esCalle && esAltura) {
+      return (curr + ' ' + next).replace(/\s+/g, ' ');
+    }
   }
 
-  // 3. Patrón clásico en una sola línea
+  // ── ESTRATEGIA 5: Patrón clásico en una línea ──
   const patterns = [
     /([A-ZÁÉÍÓÚÑ][a-záéíóúñA-Z\s\.]{3,}\s+\d{2,5}(?:\s*(?:piso|p\.?|pb|dto?\.?|dep\.?|\d°?\s*[A-Z]?))?)/g,
     /(\d{3,5}\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ\s]{4,})/g,
   ];
   for (const p of patterns) {
-    const m = text.match(p);
-    if (m) {
-      const c = m[0].trim().replace(/\s+/g, ' ');
+    const fullMatch = fullText.match(p);
+    if (fullMatch) {
+      const c = fullMatch[0].trim().replace(/\s+/g, ' ');
       if (c.length > 8 && !/\d{7,}/.test(c)) return c;
     }
   }
 
-  // 4. Fallback: línea con número y letras, sin teléfono
+  // ── ESTRATEGIA 6: Fallback — línea con número y letras ──
   for (const line of lines) {
-    if (/\d{3,5}/.test(line) && /[a-záéíóúñ]{3,}/i.test(line) && line.length > 8) {
-      if (!/\d{7,}/.test(line)) return line.replace(/\s+/g, ' ');
+    if (stopWords.test(line)) continue;
+    if (/\d{3,5}/.test(line) && /[a-záéíóúñ]{3,}/i.test(line) && line.length > 8 && line.length < 60) {
+      if (!/\d{7,}/.test(line) && !/^\d{4}[\-\/]\d{2}/.test(line)) {
+        return line.replace(/\s+/g, ' ');
+      }
     }
   }
+
   return null;
 }
 
@@ -1119,9 +1191,9 @@ function startOcrLoop() {
         setStatus('¡dirección encontrada!', 'found');
         showCard(addr, data.confidence);
       } else {
-        setStatus('apuntá la etiqueta al marco', '');
+        setStatus('apuntá toda la etiqueta al marco', '');
       }
-    } catch(e) { setStatus('apuntá la etiqueta al marco', ''); }
+    } catch(e) { setStatus('apuntá toda la etiqueta al marco', ''); }
     if (scanning) ocrInterval = setTimeout(tick, ocrMs);
   };
   ocrInterval = setTimeout(tick, ocrMs);
